@@ -1,13 +1,17 @@
-// api/reserva.js
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Sólo POST permitido' });
   }
+
   const { nombre, fechaInicio, fechaFin } = req.body;
   const token = process.env.NOTION_TOKEN;
   const db    = process.env.NOTION_DB_ID;
 
-  // 1) Llama a Notion y parsea el JSON
+  // 🔍 LOG TEMPORAL: Verifica que el token llegue bien
+  console.log("🔐 TOKEN USADO:", token);
+  console.log("📘 DB ID USADO:", db);
+
+  // Consulta a Notion
   const q = await fetch(`https://api.notion.com/v1/databases/${db}/query`, {
     method: 'POST',
     headers: {
@@ -15,19 +19,18 @@ export default async function handler(req, res) {
       'Notion-Version': '2022-06-28',
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({})  // sin filtros → trae todas las páginas
+    body: JSON.stringify({})
   });
+
   const data = await q.json();
 
-  // 2) Si Notion devolvió un error, lo capturamos y devolvemos al cliente
+  // Manejo de errores
   if (!data || !Array.isArray(data.results)) {
-    console.error("Notion API error:", data);
-    return res
-      .status(502)
-      .json({ error: "Error en consulta a Notion", details: data });
+    console.error("❌ Error de Notion:", data);
+    return res.status(502).json({ error: "Error en consulta a Notion", details: data });
   }
 
-  // 3) Si tenemos results, comprobamos conflictos
+  // Comprobación de conflicto de fechas
   const conflicto = data.results.some(p => {
     const ini = p.properties['Fecha inicio'].date.start;
     const fin = p.properties['Fecha fin'].date.start;
@@ -37,11 +40,12 @@ export default async function handler(req, res) {
       (fechaInicio <= ini && fechaFin    >= fin)
     );
   });
+
   if (conflicto) {
     return res.status(200).json({ disponible: false });
   }
 
-  // 4) Crear la página en Notion
+  // Crear reserva
   await fetch('https://api.notion.com/v1/pages', {
     method: 'POST',
     headers: {
@@ -61,4 +65,3 @@ export default async function handler(req, res) {
 
   return res.status(200).json({ disponible: true });
 }
-
